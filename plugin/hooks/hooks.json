@@ -1,0 +1,71 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python3",
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/backup.py", "session-start"],
+            "timeoutMs": 60000,
+            "statusMessage": "discipline: backing up session DB"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python3",
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/loop_cap.py", "prompt"],
+            "timeoutMs": 10000,
+            "statusMessage": "discipline: counting round"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python3",
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/loop_cap.py", "pretool"],
+            "timeoutMs": 10000,
+            "statusMessage": "discipline: checking loop cap"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python3",
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/verify.py", "posttool"],
+            "timeoutMs": 15000,
+            "statusMessage": "discipline: verifying edit landed"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python3",
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/verify.py", "stop"],
+            "timeoutMs": 60000,
+            "statusMessage": "discipline: checking verification proof"
+          }
+        ]
+      }
+    ]
+  }
+}
