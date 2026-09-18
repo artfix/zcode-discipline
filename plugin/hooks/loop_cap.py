@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Hook A - loop cap + re-grounding.
+"""Hook A - loop cap + re-grounding. Contract: see lib.py docstring.
 
-prompt mode (UserPromptSubmit): one user prompt = one round. Round 1 records
-  the session objective; from warnAt on, re-grounding text is injected.
-pretool mode (PreToolUse): past maxRounds, every tool call is DENIED (exit 2)
-  until the user runs /discipline-reset or starts a new session.
+prompt mode (UserPromptSubmit): 1 user prompt = 1 round; round 1 records the
+  objective; from warnAt injects re-grounding via hookSpecificOutput.
+pretool mode (PreToolUse): past maxRounds denies via permissionDecision=deny.
 """
 import sys
 import time
+
 import lib
 
 mode = sys.argv[1] if len(sys.argv) > 1 else "prompt"
@@ -17,18 +17,18 @@ def main():
     cfg = lib.load_config()
     data = lib.read_stdin()
     lib.debug_dump(cfg, f"loop-{mode}", data)
-    lib.CURRENT_EVENT[0] = "UserPromptSubmit" if mode == "prompt" else "PreToolUse"
 
-    sid = str(lib.first_of(data, "session_id", "sessionId", "sessionID", default="default"))
+    event = data.get("hook_event_name") or data.get("hookEventName") or ""
+    sid = data.get("session_id") or data.get("sessionId") or "default"
     st = lib.load_state()
     sessions = st.setdefault("sessions", {})
-    s = sessions.setdefault(sid, {"rounds": 0, "objective": "", "updated": 0})
+    s = sessions.setdefault(str(sid), {"rounds": 0, "objective": "", "updated": 0})
 
     max_rounds = int(cfg.get("maxRounds", 15))
     warn_at = int(cfg.get("warnAt", max(1, max_rounds - 3)))
 
     if mode == "prompt":
-        prompt = str(lib.first_of(data, "prompt", "userPrompt", "text", default="")).strip()
+        prompt = str(data.get("prompt") or "").strip()
         if s["rounds"] == 0 or not s["objective"]:
             s["objective"] = prompt[:2000]
             s["rounds"] = 1
@@ -38,14 +38,14 @@ def main():
         s["updated"] = time.time()
         lib.save_state(st)
         r = s["rounds"]
-        lib.log(f"[{sid}] round {r}/{max_rounds}")
+        lib.log(f"[{sid}] round {r}/{max_rounds} ({event})")
         if r == warn_at:
-            lib.emit_context(
+            lib.emit_context(event,
                 f"DISCIPLINE WARNING: round {r} of {max_rounds} for this session. "
                 f"Objective: {s['objective'][:500]} — finish or converge NOW; "
                 f"at {max_rounds} all tool calls are denied.")
         elif r > warn_at:
-            lib.emit_context(
+            lib.emit_context(event,
                 f"DISCIPLINE: round {r}/{max_rounds}. Objective: {s['objective'][:500]} — "
                 f"no adjacent work, converge or report.")
         return
@@ -53,10 +53,9 @@ def main():
     # pretool mode
     if s["rounds"] > max_rounds:
         lib.log(f"[{sid}] DENY tool call, cap {max_rounds} reached")
-        print("discipline: loop cap %d reached for this session — finish and report "
-              "to the user; they can continue with /discipline-reset" % max_rounds,
-              file=sys.stderr)
-        sys.exit(2)
+        lib.deny_tool(
+            f"discipline: loop cap {max_rounds} reached for this session — "
+            f"finish and report to the user; they can continue with /discipline-reset")
 
 
 try:

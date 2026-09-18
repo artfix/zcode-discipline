@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Hook B - verification.
+"""Hook B - verification. Contract: see lib.py docstring.
 
-posttool mode (PostToolUse on Edit|Write): read the file back; record an
-  "unverified edit" marker on success/failure. Never blocks (exit 0) - the
-  Stop gate owns the teeth.
-stop mode (Stop): if unverified edits exist, veto the stop (exit 2) and tell
-  the model to prove its work. ZCode natively caps continuations at 3, so a
-  model that cannot prove anything still gets to stop. Gate strength via
-  config.stopGate: off | soft (only when verifyCommand is configured) | hard.
+posttool mode (PostToolUse on Edit|Write): read tool_input["file_path"] back;
+  record an unverified marker. Failure injects additionalContext.
+stop mode (Stop): unverified edits -> {"continue": false} veto with reason;
+  ZCode natively caps Stop continuations (stopHookActive flag arrives on the
+  retry), we also cap our own blocks at 3.
 """
 import subprocess
 import sys
@@ -37,14 +35,15 @@ def main():
     data = lib.read_stdin()
     lib.debug_dump(cfg, f"verify-{mode}", data)
 
-    sid = str(lib.first_of(data, "session_id", "sessionId", "sessionID", default="default"))
+    event = data.get("hook_event_name") or data.get("hookEventName") or ""
+    sid = str(data.get("session_id") or data.get("sessionId") or "default")
     st = lib.load_state()
     unverified = st.setdefault("unverified", {})
     stop_blocks = st.setdefault("stopBlocks", {})
 
     if mode == "posttool":
-        tool_input = lib.first_of(data, "tool_input", "input", "args", default={}) or {}
-        file_path = lib.first_of(tool_input, "file_path", "filePath", "path", "file", default="")
+        tool_input = data.get("tool_input") or {}
+        file_path = tool_input.get("file_path") or ""
         ok = False
         if file_path:
             try:
@@ -58,8 +57,7 @@ def main():
         else:
             unverified[sid] = {"file": str(file_path), "ts": time.time(), "failed": True}
             lib.log(f"[{sid}] EDIT READ-BACK FAILED: {file_path}")
-            lib.CURRENT_EVENT[0] = "PostToolUse"
-            lib.emit_context(
+            lib.emit_context(event,
                 f"DISCIPLINE: VERIFICATION FAILED - edit to {file_path} did not land "
                 f"(file missing/empty after write). Re-check and redo the edit.")
         lib.save_state(st)
@@ -75,16 +73,15 @@ def main():
         lib.save_state(st)
         return
     if entry.get("failed"):
-        # the last edit never landed; let it stop, the failure was already surfaced
+        # the last edit never landed; failure was already surfaced - let it stop
         return
 
-    cwd = lib.first_of(data, "cwd", "project_dir", "workspace", default="") or ""
+    cwd = data.get("cwd") or ""
     has_cmd = bool((cfg.get("verifyCommand") or "").strip())
     if gate == "soft" and not has_cmd:
         return
 
     if has_cmd:
-        lib.CURRENT_EVENT[0] = "Stop"
         rc, out, err = run_verify_command(cfg, cwd)
         if rc == 0:
             unverified.pop(sid, None)
@@ -92,27 +89,28 @@ def main():
             lib.save_state(st)
             lib.log(f"[{sid}] verifyCommand PASSED, stop allowed")
             return
-        lib.log(f"[{sid}] verifyCommand FAILED rc={rc}, vetoing stop")
         blocks = stop_blocks.get(sid, 0) + 1
         stop_blocks[sid] = blocks
         lib.save_state(st)
-        print(f"discipline: verification FAILED (rc={rc}) - fix before stopping.\n"
-              f"stdout tail: {out[-500:]}\nstderr tail: {err[-500:]}", file=sys.stderr)
+        lib.log(f"[{sid}] verifyCommand FAILED rc={rc}, stop veto #{blocks}")
         if blocks <= MAX_STOP_BLOCKS:
-            sys.exit(2)
-        lib.log(f"[{sid}] stop-block limit reached, letting it stop")
+            lib.veto_stop(
+                f"discipline: verification FAILED (rc={rc}) - fix before stopping. "
+                f"stdout tail: {out[-300:]} stderr tail: {err[-300:]}")
+        else:
+            lib.log(f"[{sid}] stop-block limit reached, letting it stop")
         return
 
-    # hard gate without command OR soft fallback: no proof mechanism at all
+    # hard gate without a command: model must explain its proof in words
     if gate == "hard":
         blocks = stop_blocks.get(sid, 0) + 1
         stop_blocks[sid] = blocks
         lib.save_state(st)
-        lib.log(f"[{sid}] HARD veto: unverified edit {entry.get('file')}")
-        print("discipline: unverified edits exist - summarize what you changed and how "
-              "you know it works before stopping.", file=sys.stderr)
+        lib.log(f"[{sid}] HARD veto: unverified edit {entry.get('file')} (#{blocks})")
         if blocks <= MAX_STOP_BLOCKS:
-            sys.exit(2)
+            lib.veto_stop(
+                "discipline: unverified edits exist - summarize what you changed "
+                "and how you know it works before stopping.")
 
 
 try:

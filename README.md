@@ -89,12 +89,15 @@ immediately). Optionally delete `~/.zcode/discipline-state/`.
 ### Failure philosophy
 
 - **Fail-open:** any internal error in a hook logs and exits 0. A plugin bug
-  can never block your work. The only exit-2 paths are the two deliberate
-  gates (loop cap, stop veto).
-- **Strict output schema:** the plugin emits JSON only for context injection
-  (`hookSpecificOutput.additionalContext`, Claude-compatible shape). If ZCode
-  rejects the shape, the run is marked failed in ZCode's log but nothing is
-  blocked — see `debug` below to confirm/fix the exact key.
+  can never block your work. The only blocking paths are the two deliberate
+  gates (loop cap deny, stop veto), emitted as verified JSON.
+- **Strict output schema:** hooks emit ONLY keys verified against ZCode's
+  core output schema (`AJt`): `continue`, `decision`, `reason`, `stopReason`,
+  `suppressOutput`, `systemMessage`, `additionalContext`, and
+  `hookSpecificOutput` (per-event union, `hookEventName` required inside).
+  Deny = `permissionDecision: "deny"` (PreToolUse union member); stop veto =
+  `continue: false` + `stopReason`. One unknown key would discard the whole
+  output — hence none are emitted.
 - **No daemons:** hooks run only on their events (worst case the backup,
   ~1.5s for a 79MB DB). Everything else is milliseconds.
 
@@ -141,15 +144,18 @@ the entire reason `verifyCommand` exists and the only reason any manual step
 could ever be involved. Leave it `""` and `stopGate` `soft`: the plugin still
 does everything else, silently.
 
-### Compatibility notes
+### Hook contract (verified against ZCode core code)
 
-- Uses `${ZCODE_PLUGIN_ROOT}` for plugin-relative paths and `python3`
-  `process` hooks (no shell, no exec-bit issues).
-- Context injection uses `{"hookSpecificOutput": {"hookEventName": ...,
-  "additionalContext": ...}}`. Verified live via the `debug` dump; adjust in
-  `lib.emit_context` if ZCode's strict schema differs.
-- ZCode records every hook run (fired/blocked/failed, source, duration) in
-  its own log — debugging never requires guesswork.
+Input (snake_case, built by ZCode's Claude-compat layer): `session_id`,
+`hook_event_name`, `permission_mode`, `agent_type`, `cwd`, `timestamp`,
+`transcript_path`; per event: `prompt` (UserPromptSubmit),
+`tool_name`/`tool_input`/`tool_use_id` (Pre/PostToolUse), `tool_response`
+(PostToolUse), `stopHookActive`/`responseText`/`toolCallCount` (Stop).
+
+Output: the strict top-level schema listed above; `hookSpecificOutput` is a
+discriminated union on `hookEventName` — PreToolUse accepts
+`permissionDecision` (allow/ask/deny) + `permissionDecisionReason`; all other
+events accept `additionalContext`.
 
 ## License
 

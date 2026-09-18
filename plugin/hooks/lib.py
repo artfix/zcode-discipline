@@ -1,11 +1,24 @@
-"""Shared state/config/log helpers for zcode-discipline hooks.
+"""Shared helpers for zcode-discipline hooks.
+
+The hook contract below is VERIFIED against ZCode's own core code
+(glm/zcode.cjs: payload builder mNt, output schema AJt, per-event union eYn):
+
+STDIN  (snake_case, Claude-compat): session_id, hook_event_name,
+       permission_mode, agent_type, cwd, timestamp, transcript_path,
+       prompt (UserPromptSubmit), tool_name/tool_input/tool_use_id (tool
+       events), tool_response (PostToolUse), stopHookActive (Stop).
+
+OUTPUT (strict schema, ONLY these top-level keys):
+       continue: bool, decision: "approve"|"block", reason, stopReason,
+       suppressOutput, systemMessage, additionalContext/additional_context,
+       hookSpecificOutput: {hookEventName: <same event>, additionalContext?}
+         + PreToolUse only: permissionDecision "allow"|"ask"|"deny",
+           permissionDecisionReason, updatedInput.
 
 Design rules:
-- Fail-open: any internal error logs and exits 0 (never blocks John's work
-  because of a plugin bug). Deliberate blocks (loop cap, stop veto) exit 2.
-- Strict output schema: emit nothing unless we mean to inject context.
-- Exact stdin field names are version-dependent; everything is read
-  defensively through known key candidates. debug:true dumps raw stdin.
+- Fail-open: internal errors log and exit 0. Deliberate gates emit the
+  verified JSON deny/veto and exit 0 (JSON is the first-class mechanism).
+- Output carries ONLY schema keys — one extra key = whole output discarded.
 """
 
 import json
@@ -22,11 +35,11 @@ DEBUG_DIR = STATE_DIR / "debug"
 BACKUP_DIR = STATE_DIR / "backups"
 
 DEFAULTS = {
-    "debug": True,              # dump raw hook stdin to debug/ until format confirmed
+    "debug": True,              # dump raw hook stdin to debug/ (first session confirms live shape)
     "maxRounds": 15,            # tool-deny cap per session
     "warnAt": 12,               # loud re-grounding starts here
     "stopGate": "soft",         # off | soft (block only if verifyCommand set) | hard (block on any unverified edit)
-    "verifyCommand": "",        # e.g. "npm test"; run from the session's project dir
+    "verifyCommand": "",        # e.g. "npm test"; run from the session's cwd
     "backups": {"keep": 5, "maxSourceMB": 500},
 }
 
@@ -43,7 +56,7 @@ def log(msg):
         with open(LOG_FILE, "a") as f:
             f.write(line)
         if LOG_FILE.stat().st_size > 1_000_000:  # 1MB self-rotation
-            LOG_FILE.rename(LOG_FILE.with_suffix(".log.old"))
+            LOG_FILE.replace(LOG_FILE.with_suffix(".log.old"))
     except Exception:
         pass
 
@@ -90,31 +103,39 @@ def debug_dump(cfg, event, data):
         return
     try:
         ensure_dirs()
-        n = len(list(DEBUG_DIR.glob("*.json")))
-        if n < 60:
+        if len(list(DEBUG_DIR.glob("*.json"))) < 60:
             (DEBUG_DIR / f"{event}-{int(time.time()*1000)}.json").write_text(
                 json.dumps(data, indent=1)[:20000])
     except Exception:
         pass
 
 
-def first_of(d, *keys, default=None):
-    for k in keys:
-        if isinstance(d, dict) and d.get(k) is not None:
-            return d[k]
-    return default
-
-
-def emit_context(text):
-    """Best-effort additionalContext injection (Claude-compat shape).
-    If ZCode's strict schema rejects it, the run logs a validation note and
-    nothing is injected - never fatal."""
+def emit_context(event_name, text):
+    """Inject text into the conversation (verified per-event union member)."""
     print(json.dumps({
         "hookSpecificOutput": {
-            "hookEventName": CURRENT_EVENT[0],
+            "hookEventName": event_name,
             "additionalContext": text,
         }
     }))
 
 
-CURRENT_EVENT = ["UserPromptSubmit"]
+def deny_tool(reason):
+    """PreToolUse deny via the verified JSON path (exit 0)."""
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }))
+
+
+def veto_stop(reason):
+    """Stop veto via the verified top-level keys."""
+    print(json.dumps({
+        "continue": False,
+        "stopReason": reason,
+        "reason": reason,
+        "systemMessage": reason,
+    }))
