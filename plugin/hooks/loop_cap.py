@@ -11,6 +11,7 @@ pretool mode (PreToolUse): past maxRounds denies via permissionDecision=deny,
   access to ~/.zcode/discipline-state/ files (status must work at cap —
   v0.2.0 blocked its own reset, a catch-22).
 """
+import argparse
 import re
 import sys
 import time
@@ -23,6 +24,19 @@ mode = sys.argv[1] if len(sys.argv) > 1 else "prompt"
 # stray shell command can't pass as the reset.
 RESET_MARKERS = ("discipline-state/state.json", "loop cap reset")
 READ_TOOLS = {"Read", "Grep", "Glob"}
+
+
+def ui_overrides(cfg):
+    """Knobs set in ZCode's plugin settings arrive as CLI args (hooks.json
+    expands ${user_config.*}); they beat config.json. Positional mode is
+    already consumed, so unknown leftovers are ignored."""
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("--max-rounds", type=int, dest="max_rounds")
+    p.add_argument("--warn-at", type=int, dest="warn_at")
+    a, _ = p.parse_known_args()
+    max_rounds = a.max_rounds if a.max_rounds is not None else int(cfg.get("maxRounds", 15))
+    warn_at = a.warn_at if a.warn_at is not None else int(cfg.get("warnAt", max(1, max_rounds - 3)))
+    return max_rounds, max(1, min(warn_at, max_rounds - 1))
 
 
 def is_reset_bash(tool_name, tool_input):
@@ -59,9 +73,7 @@ def main():
     sessions = st.setdefault("sessions", {})
     s = sessions.setdefault(str(sid), {"rounds": 0, "objective": "", "updated": 0})
 
-    max_rounds = int(cfg.get("maxRounds", 15))
-    warn_at = int(cfg.get("warnAt", max(1, max_rounds - 3)))
-    warn_at = max(1, min(warn_at, max_rounds - 1))
+    max_rounds, warn_at = ui_overrides(cfg)
 
     if mode == "prompt":
         prompt = str(data.get("prompt") or "").strip()

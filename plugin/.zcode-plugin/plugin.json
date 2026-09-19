@@ -1,7 +1,45 @@
 {
   "name": "zcode-discipline",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Discipline hooks: goal-round cap with re-grounding, edit read-back verification with stop-veto, session DB backups. All state under ~/.zcode/discipline-state.",
   "hooks": "hooks",
-  "commands": "commands"
+  "commands": "commands",
+  "userConfig": {
+    "maxRounds": {
+      "title": "Max rounds per session",
+      "description": "Prompts before every tool call is denied and the agent must report. /discipline-reset lifts the cap.",
+      "type": "number",
+      "default": 15
+    },
+    "warnAt": {
+      "title": "Warn at round",
+      "description": "Round where re-grounding nudges start. Kept below max rounds automatically.",
+      "type": "number",
+      "default": 12
+    },
+    "stopGate": {
+      "title": "Stop gate",
+      "description": "off = never veto stops; soft = veto only if a proof command is set; hard = veto any unverified edit",
+      "type": "string",
+      "default": "soft"
+    },
+    "verifyCommand": {
+      "title": "Proof command",
+      "description": "Command that proves the work works, e.g. npm test. Empty = no proof required.",
+      "type": "string",
+      "default": ""
+    },
+    "backupKeep": {
+      "title": "DB backups to keep",
+      "description": "How many session-DB snapshots to retain (one taken per session start).",
+      "type": "number",
+      "default": 5
+    },
+    "backupMaxMB": {
+      "title": "Skip backup above (MB)",
+      "description": "Skip the snapshot if the session DB is bigger than this.",
+      "type": "number",
+      "default": 500
+    }
+  }
 }

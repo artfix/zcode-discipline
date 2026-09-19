@@ -110,35 +110,39 @@ instant in live sessions). Optionally delete `~/.zcode/discipline-state/`.
 | Path | Contents |
 |---|---|
 | `state.json` | Per-session rounds, objectives, unverified-edit markers, stop-block counts |
-| `config.json` | Your knobs (created with defaults on first fire) |
+| `config.json` | Dev knobs only (`debug`) — main knobs live in the plugin settings UI |
 | `discipline.log` | Human-readable activity log, self-rotates at 1MB |
 | `backups/` | `db-<timestamp>.sqlite.gz`, keep 5 |
 | `debug/` | Raw hook input dumps while `debug: true` — read one after the first live session, then set `debug: false` |
 
-### Configuration — `~/.zcode/discipline-state/config.json`
+### Settings — edit them in ZCode, no file digging (v0.3.0+)
 
-Defaults; every key is optional:
+All knobs are declared in the plugin manifest (`userConfig`), so ZCode's
+plugin settings UI lets you edit them directly. Values are passed to the
+hooks on every fire (`${user_config.*}` expansion in `hooks.json`), so
+changes apply to the next hook run — no restart needed.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `maxRounds` | `15` | Prompts per session before tool calls are denied |
+| `warnAt` | `12` | Round where re-grounding nudges start (auto-clamped below max) |
+| `stopGate` | `soft` | `off` = never veto stops · `soft` = veto only if a proof command is set · `hard` = veto any unverified edit |
+| `verifyCommand` | `""` | Proof command run at Stop and `/discipline-verify`, from the project dir |
+| `backupKeep` | `5` | How many DB snapshots to keep |
+| `backupMaxMB` | `500` | Skip backup if the DB grows past this |
+
+If the UI route is unavailable, the same values can be set in
+`~/.zcode/cli/config.json` under `"plugins": {"options": {"zcode-discipline": {...}}}`.
+
+`~/.zcode/discipline-state/config.json` is now only for the non-UI dev knob:
 
 ```json
-{
-  "debug": true,
-  "maxRounds": 15,
-  "warnAt": 12,
-  "stopGate": "soft",
-  "verifyCommand": "",
-  "backups": { "keep": 5, "maxSourceMB": 500 }
-}
+{ "debug": true }
 ```
 
-| Key | Default | Meaning | Touch it when... |
-|---|---|---|---|
-| `debug` | `true` | Dumps raw hook input to `debug/` | Set `false` after the first session confirmed the context-injection shape |
-| `maxRounds` | `15` | Rounds before tools are denied | Long-running legit tasks keep tripping the cap |
-| `warnAt` | `12` | Round where re-grounding starts | You want earlier/later warnings |
-| `stopGate` | `soft` | `off` = never veto stops · `soft` = veto only if `verifyCommand` is set · `hard` = veto whenever edits are unverified (model must explain its proof in words) | You want the guard always on, even without tests |
-| `verifyCommand` | `""` | The proof command run at Stop and at `/discipline-verify`, from the project dir | Your project has tests or a health check — one line, e.g. `"npm test"` |
-| `backups.keep` | `5` | How many DB snapshots to keep | You want more/fewer |
-| `backups.maxSourceMB` | `500` | Skip backup if the DB grows past this | Your DB gets huge |
+| Key | Default | Meaning |
+|---|---|---|
+| `debug` | `true` | Dumps raw hook input to `debug/` — set `false` after the first session confirmed the payload shape |
 
 ### The one manual thing, explained
 

@@ -6,6 +6,7 @@ backup API (WAL-safe), gzips it into discipline-state/backups/, rotates
 keep-N. Skips silently if the source is bigger than maxSourceMB. Never
 blocks the session: all errors are logged and exit 0.
 """
+import argparse
 import gzip
 import shutil
 import sqlite3
@@ -19,8 +20,24 @@ import lib
 DB = Path.home() / ".zcode" / "cli" / "db" / "db.sqlite"
 
 
+def ui_overrides(cfg):
+    """Knobs set in ZCode's plugin settings arrive as CLI args (hooks.json
+    expands ${user_config.*}); they beat config.json. Leftover positional
+    args are ignored."""
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("--keep", type=int)
+    p.add_argument("--max-source-mb", type=int, dest="max_source_mb")
+    a, _ = p.parse_known_args()
+    b = cfg.setdefault("backups", {})
+    if a.keep is not None:
+        b["keep"] = a.keep
+    if a.max_source_mb is not None:
+        b["maxSourceMB"] = a.max_source_mb
+    return cfg
+
+
 def main():
-    cfg = lib.load_config()
+    cfg = ui_overrides(lib.load_config())
     data = lib.read_stdin()
     lib.debug_dump(cfg, "session-start", data)
     lib.ensure_dirs()
