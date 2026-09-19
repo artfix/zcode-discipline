@@ -7,9 +7,7 @@
           {
             "type": "process",
             "command": "python3",
-            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/backup.py", "session-start",
-                     "--keep", "${user_config.backupKeep}",
-                     "--max-source-mb", "${user_config.backupMaxMB}"],
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/backup.py", "session-start"],
             "timeoutMs": 60000,
             "statusMessage": "discipline: backing up session DB"
           }
@@ -22,9 +20,7 @@
           {
             "type": "process",
             "command": "python3",
-            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/loop_cap.py", "prompt",
-                     "--max-rounds", "${user_config.maxRounds}",
-                     "--warn-at", "${user_config.warnAt}"],
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/loop_cap.py", "prompt"],
             "timeoutMs": 10000,
             "statusMessage": "discipline: counting round"
           }
@@ -37,9 +33,7 @@
           {
             "type": "process",
             "command": "python3",
-            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/loop_cap.py", "pretool",
-                     "--max-rounds", "${user_config.maxRounds}",
-                     "--warn-at", "${user_config.warnAt}"],
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/loop_cap.py", "pretool"],
             "timeoutMs": 10000,
             "statusMessage": "discipline: checking loop cap"
           }
@@ -53,9 +47,7 @@
           {
             "type": "process",
             "command": "python3",
-            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/verify.py", "posttool",
-                     "--stop-gate", "${user_config.stopGate}",
-                     "--verify-command", "${user_config.verifyCommand}"],
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/verify.py", "posttool"],
             "timeoutMs": 15000,
             "statusMessage": "discipline: verifying edit landed"
           }
@@ -68,9 +60,7 @@
           {
             "type": "process",
             "command": "python3",
-            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/verify.py", "stop",
-                     "--stop-gate", "${user_config.stopGate}",
-                     "--verify-command", "${user_config.verifyCommand}"],
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/verify.py", "stop"],
             "timeoutMs": 60000,
             "statusMessage": "discipline: checking verification proof"
           }

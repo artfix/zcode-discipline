@@ -11,7 +11,6 @@ pretool mode (PreToolUse): past maxRounds denies via permissionDecision=deny,
   access to ~/.zcode/discipline-state/ files (status must work at cap —
   v0.2.0 blocked its own reset, a catch-22).
 """
-import argparse
 import re
 import sys
 import time
@@ -26,16 +25,13 @@ RESET_MARKERS = ("discipline-state/state.json", "loop cap reset")
 READ_TOOLS = {"Read", "Grep", "Glob"}
 
 
-def ui_overrides(cfg):
-    """Knobs set in ZCode's plugin settings arrive as CLI args (hooks.json
-    expands ${user_config.*}); they beat config.json. Positional mode is
-    already consumed, so unknown leftovers are ignored."""
-    p = argparse.ArgumentParser(add_help=False)
-    p.add_argument("--max-rounds", type=int, dest="max_rounds")
-    p.add_argument("--warn-at", type=int, dest="warn_at")
-    a, _ = p.parse_known_args()
-    max_rounds = a.max_rounds if a.max_rounds is not None else int(cfg.get("maxRounds", 15))
-    warn_at = a.warn_at if a.warn_at is not None else int(cfg.get("warnAt", max(1, max_rounds - 3)))
+def knobs(cfg):
+    """Knobs come from config.json over lib defaults. No argparse and no
+    ${user_config.*} args: ZCode does not expand those placeholders (verified
+    0.3.0 — argparse got the literal string and its SystemExit(2) exit code
+    made ZCode block every prompt)."""
+    max_rounds = max(1, int(cfg.get("maxRounds", 15)))
+    warn_at = int(cfg.get("warnAt", max(1, max_rounds - 3)))
     return max_rounds, max(1, min(warn_at, max_rounds - 1))
 
 
@@ -73,7 +69,7 @@ def main():
     sessions = st.setdefault("sessions", {})
     s = sessions.setdefault(str(sid), {"rounds": 0, "objective": "", "updated": 0})
 
-    max_rounds, warn_at = ui_overrides(cfg)
+    max_rounds, warn_at = knobs(cfg)
 
     if mode == "prompt":
         prompt = str(data.get("prompt") or "").strip()
@@ -126,8 +122,8 @@ def main():
 
 try:
     main()
-except SystemExit:
-    raise
-except Exception as e:
-    lib.log(f"loop_cap internal error: {e!r}")
-    sys.exit(0)
+except BaseException as e:  # nonzero exit blocks prompts — soft-fail, always
+    try:
+        lib.log(f"loop_cap soft-fail: {e!r}")
+    except Exception:
+        pass

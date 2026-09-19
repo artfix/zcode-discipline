@@ -1,43 +1,43 @@
 {
   "name": "zcode-discipline",
-  "version": "0.3.0",
-  "description": "Discipline hooks: goal-round cap with re-grounding, edit read-back verification with stop-veto, session DB backups. All state under ~/.zcode/discipline-state.",
+  "version": "0.3.1",
+  "description": "Discipline hooks: goal-round cap with re-grounding, edit read-back verification with stop-veto, session DB backups. All state under ~/.zcode/discipline-state. Knobs are read from ~/.zcode/discipline-state/config.json.",
   "hooks": "hooks",
   "commands": "commands",
   "userConfig": {
     "maxRounds": {
       "title": "Max rounds per session",
-      "description": "Prompts before every tool call is denied and the agent must report. /discipline-reset lifts the cap.",
+      "description": "Prompts before every tool call is denied and the agent must report. /discipline-reset lifts the cap. Set it in ~/.zcode/discipline-state/config.json (key maxRounds) — this client does not persist settings-UI values for hooks.",
       "type": "number",
       "default": 15
     },
     "warnAt": {
       "title": "Warn at round",
-      "description": "Round where re-grounding nudges start. Kept below max rounds automatically.",
+      "description": "Round where re-grounding nudges start. Kept below max rounds automatically. Set via config.json key warnAt.",
       "type": "number",
       "default": 12
     },
     "stopGate": {
       "title": "Stop gate",
-      "description": "off = never veto stops; soft = veto only if a proof command is set; hard = veto any unverified edit",
+      "description": "off = never veto stops; soft = veto only if a proof command is set; hard = veto any unverified edit. Set via config.json key stopGate.",
       "type": "string",
       "default": "soft"
     },
     "verifyCommand": {
       "title": "Proof command",
-      "description": "Command that proves the work works, e.g. npm test. Empty = no proof required.",
+      "description": "Command that proves the work works, e.g. npm test. Spaces are fine. Empty = no proof required. Set via config.json key verifyCommand.",
       "type": "string",
       "default": ""
     },
     "backupKeep": {
       "title": "DB backups to keep",
-      "description": "How many session-DB snapshots to retain (one taken per session start).",
+      "description": "How many session-DB snapshots to retain (one taken per session start). Set via config.json key backups.keep.",
       "type": "number",
       "default": 5
     },
     "backupMaxMB": {
       "title": "Skip backup above (MB)",
-      "description": "Skip the snapshot if the session DB is bigger than this.",
+      "description": "Skip the snapshot if the session DB is bigger than this. Set via config.json key backups.maxSourceMB.",
       "type": "number",
       "default": 500
     }

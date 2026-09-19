@@ -7,7 +7,6 @@ stop mode (Stop): unverified edits -> {"continue": false} veto with reason;
   ZCode natively caps Stop continuations (stopHookActive flag arrives on the
   retry), we also cap our own blocks at 3.
 """
-import argparse
 import subprocess
 import sys
 import time
@@ -17,21 +16,6 @@ import lib
 
 mode = sys.argv[1] if len(sys.argv) > 1 else "posttool"
 MAX_STOP_BLOCKS = 3
-
-
-def ui_overrides(cfg):
-    """Knobs set in ZCode's plugin settings arrive as CLI args (hooks.json
-    expands ${user_config.*}); they beat config.json. Leftover positional
-    args are ignored."""
-    p = argparse.ArgumentParser(add_help=False)
-    p.add_argument("--stop-gate", dest="stop_gate")
-    p.add_argument("--verify-command", dest="verify_command")
-    a, _ = p.parse_known_args()
-    if a.stop_gate is not None:
-        cfg["stopGate"] = a.stop_gate
-    if a.verify_command is not None:
-        cfg["verifyCommand"] = a.verify_command
-    return cfg
 
 
 def run_verify_command(cfg, cwd):
@@ -47,7 +31,10 @@ def run_verify_command(cfg, cwd):
 
 
 def main():
-    cfg = ui_overrides(lib.load_config())
+    # stopGate/verifyCommand come from config.json over lib defaults; no
+    # ${user_config.*} args — ZCode does not expand those placeholders, and
+    # the old --verify-command arg would have split "npm run test" anyway.
+    cfg = lib.load_config()
     data = lib.read_stdin()
     lib.debug_dump(cfg, f"verify-{mode}", data)
 
@@ -131,8 +118,8 @@ def main():
 
 try:
     main()
-except SystemExit:
-    raise
-except Exception as e:
-    lib.log(f"verify internal error: {e!r}")
-    sys.exit(0)
+except BaseException as e:  # nonzero exit blocks prompts/stops — soft-fail
+    try:
+        lib.log(f"verify soft-fail: {e!r}")
+    except Exception:
+        pass

@@ -87,14 +87,18 @@ instant in live sessions). Optionally delete `~/.zcode/discipline-state/`.
 | Loop cap | `UserPromptSubmit` | `loop_cap.py prompt` | Round counter; first non-junk prompt records the objective (greetings/keyboard mash skipped); from `warnAt` injects re-grounding; at the cap injects once, then stays silent |
 | Loop cap | `PreToolUse` (all tools) | `loop_cap.py pretool` | At `maxRounds`: JSON-deny every tool call except `/discipline-reset`'s bash command and reads of `discipline-state` files |
 | Verification | `PostToolUse` on `Edit\|Write` | `verify.py posttool` | Read-back check (file exists, non-empty); failure → `additionalContext` to the model; records unverified marker |
-| Verification | `Stop` (all) | `verify.py stop` | Unverified edits → exit 2 veto with reason, max 3 (matches ZCode's continuation cap); `verifyCommand` exit 0 clears the marker |
+| Verification | `Stop` (all) | `verify.py stop` | Unverified edits → `continue: false` veto with reason, max 3 (matches ZCode's continuation cap); `verifyCommand` exit 0 clears the marker |
 | Backup | `SessionStart` on `startup` | `backup.py session-start` | sqlite3 backup API (WAL-safe, read-only source) → gzip → rotate keep-N |
 
 ### Failure philosophy
 
-- **Fail-open:** any internal error in a hook logs and exits 0. A plugin bug
-  can never block your work. The only blocking paths are the two deliberate
-  gates (loop cap deny, stop veto), emitted as verified JSON.
+- **Fail-open, learned the hard way (v0.3.1):** every hook catches
+  `BaseException` — including `SystemExit`, which is exactly how v0.3.0's
+  argparse crash escaped the old guard, exited 2, and made ZCode block every
+  prompt (the plugin literally made the agent untalkable-to). Now a hook
+  cannot exit nonzero even if it tries. The only blocking paths are the two
+  deliberate gates (loop cap deny, stop veto), emitted as verified JSON at
+  exit 0.
 - **Strict output schema:** hooks emit ONLY keys verified against ZCode's
   core output schema (`AJt`): `continue`, `decision`, `reason`, `stopReason`,
   `suppressOutput`, `systemMessage`, `additionalContext`, and
@@ -110,39 +114,50 @@ instant in live sessions). Optionally delete `~/.zcode/discipline-state/`.
 | Path | Contents |
 |---|---|
 | `state.json` | Per-session rounds, objectives, unverified-edit markers, stop-block counts |
-| `config.json` | Dev knobs only (`debug`) — main knobs live in the plugin settings UI |
+| `config.json` | ALL knobs live here (see table below) — this is the one source of truth |
 | `discipline.log` | Human-readable activity log, self-rotates at 1MB |
 | `backups/` | `db-<timestamp>.sqlite.gz`, keep 5 |
 | `debug/` | Raw hook input dumps while `debug: true` — read one after the first live session, then set `debug: false` |
 
-### Settings — edit them in ZCode, no file digging (v0.3.0+)
+### Settings — one file: `~/.zcode/discipline-state/config.json` (v0.3.1+)
 
-All knobs are declared in the plugin manifest (`userConfig`), so ZCode's
-plugin settings UI lets you edit them directly. Values are passed to the
-hooks on every fire (`${user_config.*}` expansion in `hooks.json`), so
-changes apply to the next hook run — no restart needed.
+v0.3.0 declared the knobs as `userConfig` and passed them via
+`${user_config.*}` expansion in `hooks.json`. **That was wrong: ZCode expands
+`${ZCODE_PLUGIN_ROOT}` but does NOT expand `${user_config.*}` in hook args —
+the hooks received the literal placeholder strings, argparse died on them, and
+the nonzero exit made ZCode block every prompt (the plugin became a wall you
+could not talk through). v0.3.1 removes all of that machinery.**
 
-| Setting | Default | Meaning |
-|---|---|---|
-| `maxRounds` | `15` | Prompts per session before tool calls are denied |
-| `warnAt` | `12` | Round where re-grounding nudges start (auto-clamped below max) |
-| `stopGate` | `soft` | `off` = never veto stops · `soft` = veto only if a proof command is set · `hard` = veto any unverified edit |
-| `verifyCommand` | `""` | Proof command run at Stop and `/discipline-verify`, from the project dir |
-| `backupKeep` | `5` | How many DB snapshots to keep |
-| `backupMaxMB` | `500` | Skip backup if the DB grows past this |
-
-If the UI route is unavailable, the same values can be set in
-`~/.zcode/cli/config.json` under `"plugins": {"options": {"zcode-discipline": {...}}}`.
-
-`~/.zcode/discipline-state/config.json` is now only for the non-UI dev knob:
+The hooks now read every knob from `~/.zcode/discipline-state/config.json`,
+falling back to the manifest defaults. This also fixed the "proof command with
+spaces" worry: `verifyCommand` reaches the hook as one JSON value, never
+through shell argument splitting.
 
 ```json
-{ "debug": true }
+{
+  "debug": false,
+  "maxRounds": 15,
+  "warnAt": 12,
+  "stopGate": "soft",
+  "verifyCommand": "npm test",
+  "backups": { "keep": 5, "maxSourceMB": 500 }
+}
 ```
 
 | Key | Default | Meaning |
 |---|---|---|
+| `maxRounds` | `15` | Prompts per session before tool calls are denied |
+| `warnAt` | `12` | Round where re-grounding nudges start (auto-clamped below max) |
+| `stopGate` | `soft` | `off` = never veto stops · `soft` = veto only if a proof command is set · `hard` = veto any unverified edit |
+| `verifyCommand` | `""` | Proof command run at Stop and `/discipline-verify`, from the project dir — spaces fine |
+| `backups.keep` | `5` | How many DB snapshots to keep |
+| `backups.maxSourceMB` | `500` | Skip backup if the DB grows past this |
 | `debug` | `true` | Dumps raw hook input to `debug/` — set `false` after the first session confirmed the payload shape |
+
+The manifest keeps a `userConfig` block so the settings UI still *shows* the
+knobs, but in the current client the UI does not persist values anywhere the
+hooks can read (verified: no such file exists on disk). Treat `config.json`
+as the only way to change settings.
 
 ### The one manual thing, explained
 
