@@ -5,7 +5,7 @@
       "name": "zcode-discipline",
       "source": "plugin",
       "description": "Loop cap + re-grounding, edit verification with stop-veto, session backups. Local hooks, fail-open, no daemons.",
-      "version": "0.2.0"
+      "version": "0.2.1"
     }
   ]
 }

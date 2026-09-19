@@ -1,6 +1,6 @@
 {
   "name": "zcode-discipline",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Discipline hooks: goal-round cap with re-grounding, edit read-back verification with stop-veto, session DB backups. All state under ~/.zcode/discipline-state.",
   "hooks": "hooks",
   "commands": "commands"

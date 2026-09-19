@@ -15,9 +15,11 @@ eats your history. This plugin catches all three.
 **1. It stops runaway sessions.**
 Every message you send counts as a "round". The agent has 15 rounds of full
 power. From round 12 it gets a growing reminder of what your original request
-was, so it stops drifting into random side-work. At round 16 it loses its
+was, so it stops drifting into random side-work. At the cap it loses its
 hands — every tool call is refused — and it must report back to you instead of
-churning forever. You can always let it continue: type `/discipline-reset`.
+churning forever; the cap notice appears once, then the session stays quiet.
+You can always let it continue: type `/discipline-reset` — that command and
+status checks work even while capped.
 
 **2. It catches phantom edits.**
 After the agent edits or writes any file, the plugin opens that file back up
@@ -52,8 +54,8 @@ needed more rounds, `/discipline-reset` and carry on.
 
 | Command | What it does |
 |---|---|
-| `/discipline-reset` | Zeroes the round counter — tool calls allowed again |
-| `/discipline-status` | Shows you where every session stands, in plain words |
+| `/discipline-reset` | Zeroes the round counter — tool calls allowed again (whitelisted, works even while capped) |
+| `/discipline-status` | Shows you where every session stands, in plain words, named like the UI shows them |
 | `/discipline-verify` | Runs your proof command right now and shows pass/fail |
 
 ---
@@ -69,8 +71,10 @@ select this folder → install **zcode-discipline**.
 Hooks load in **new sessions only** — restart or open a fresh session after
 installing.
 
-**Uninstall:** toggle it off in Settings → Plugin Management (hooks vanish
-immediately). Optionally delete `~/.zcode/discipline-state/`.
+**Uninstall:** toggle it off in Settings → Plugin Management. Hooks load per
+session, so a session that is already running keeps firing them until you
+restart it or open a fresh one (observed 2026-09-19 — the toggle is not
+instant in live sessions). Optionally delete `~/.zcode/discipline-state/`.
 
 ---
 
@@ -80,8 +84,8 @@ immediately). Optionally delete `~/.zcode/discipline-state/`.
 
 | Hook | Event / matcher | Script | Effect |
 |---|---|---|---|
-| Loop cap | `UserPromptSubmit` | `loop_cap.py prompt` | Round counter; round 1 records objective; from `warnAt` injects re-grounding context |
-| Loop cap | `PreToolUse` (all tools) | `loop_cap.py pretool` | Past `maxRounds`: exit 2 — deny every tool call |
+| Loop cap | `UserPromptSubmit` | `loop_cap.py prompt` | Round counter; first non-junk prompt records the objective (greetings/keyboard mash skipped); from `warnAt` injects re-grounding; at the cap injects once, then stays silent |
+| Loop cap | `PreToolUse` (all tools) | `loop_cap.py pretool` | At `maxRounds`: JSON-deny every tool call except `/discipline-reset`'s bash command and reads of `discipline-state` files |
 | Verification | `PostToolUse` on `Edit\|Write` | `verify.py posttool` | Read-back check (file exists, non-empty); failure → `additionalContext` to the model; records unverified marker |
 | Verification | `Stop` (all) | `verify.py stop` | Unverified edits → exit 2 veto with reason, max 3 (matches ZCode's continuation cap); `verifyCommand` exit 0 clears the marker |
 | Backup | `SessionStart` on `startup` | `backup.py session-start` | sqlite3 backup API (WAL-safe, read-only source) → gzip → rotate keep-N |
